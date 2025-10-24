@@ -1,0 +1,34 @@
+import './App.css'
+import { useState } from 'react'
+import TextEditor from './components/TextEditor'
+
+function App() {
+  const [content, setContent] = useState('<p>Tulis catatan pertamamu di sini.</p>')
+
+  return (
+    <main className="app">
+      <header className="app__header">
+        <h1 className="app__title">Teks Editor</h1>
+        <p className="app__subtitle">Komponen dasar editor menggunakan Tiptap.</p>
+      </header>
+
+      <section>
+        <TextEditor
+          value={content}
+          onChange={setContent}
+          placeholder="Mulai mengetik catatanmu di sini..."
+        />
+      </section>
+
+      <section className="preview">
+        <h2 className="preview__title">Preview HTML</h2>
+        <div
+          className="preview__content tiptap"
+          dangerouslySetInnerHTML={{ __html: content }}
+        />
+      </section>
+    </main>
+  )
+}
+
+export default App
