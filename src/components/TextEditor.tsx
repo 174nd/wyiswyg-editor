@@ -179,12 +179,7 @@ const promptImageUrlAndInsert = (editor: TiptapEditor) => {
   const altInput = window.prompt("Masukkan teks alt (opsional)", "");
   const alt = altInput ? altInput.trim() || undefined : undefined;
 
-  editor
-    .chain()
-    .focus()
-    .setImage({ src: normalizedUrl, alt })
-    .updateAttributes("image", { width: 100 })
-    .run();
+  editor.chain().focus().setImage({ src: normalizedUrl, alt }).updateAttributes("image", { width: 100 }).run();
 };
 
 const SlashCommandList = forwardRef<SlashCommandListRef, SlashCommandListProps>(({ items, command }, ref) => {
@@ -529,7 +524,7 @@ const createSlashCommandExtension = () =>
       char: "/",
       allowSpaces: false,
       startOfLine: false,
-      items: ({ query, editor: _editor }: { query: string; editor: TiptapEditor }) => {
+      items: ({ query }: { query: string; editor: TiptapEditor }) => {
         const normalized = query.toLowerCase().trim();
         const items = createSlashCommandItems();
         if (!normalized.length) {
@@ -732,9 +727,7 @@ const ResizableImage = Image.extend({
       width: {
         default: 100,
         renderHTML: (attributes: { width?: number }) => {
-          const width = typeof attributes.width === "number" && Number.isFinite(attributes.width)
-            ? attributes.width
-            : 100;
+          const width = typeof attributes.width === "number" && Number.isFinite(attributes.width) ? attributes.width : 100;
           const style = [`width: ${width}%;`, "height: auto;"];
           return {
             "data-width": width,
@@ -742,8 +735,7 @@ const ResizableImage = Image.extend({
           };
         },
         parseHTML: (element: HTMLElement) => {
-          const widthAttr =
-            element.getAttribute("data-width") ?? element.style.width ?? element.getAttribute("width");
+          const widthAttr = element.getAttribute("data-width") ?? element.style.width ?? element.getAttribute("width");
           if (!widthAttr) return 100;
           const parsed = parseFloat(String(widthAttr).replace(/[^\d.]/g, ""));
           return Number.isFinite(parsed) ? parsed : 100;
@@ -794,20 +786,9 @@ type TextEditorProps = {
   contentClassName?: string;
 };
 
-const TextEditor = ({
-  value = "",
-  onChange,
-  placeholder = "Mulai mengetik...",
-  className,
-  contentClassName,
-}: TextEditorProps) => {
+const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik...", className, contentClassName }: TextEditorProps) => {
   const wrapperClassName = ["text-editor", className].filter(Boolean).join(" ");
-  const editorContentClassName = [
-    "text-editor__content tiptap focus:outline-none min-h-[180px]",
-    contentClassName,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const editorContentClassName = ["text-editor__content tiptap focus:outline-none min-h-[180px]", contentClassName].filter(Boolean).join(" ");
 
   const editor = useEditor({
     extensions: [
@@ -969,7 +950,7 @@ const TextEditor = ({
       if (!editor) return;
       await insertImagesFromFiles(editor, files, position);
     },
-    [editor],
+    [editor]
   );
 
   const handleFileInputChange = useCallback(
@@ -981,7 +962,7 @@ const TextEditor = ({
       void handleImageInsertion(files);
       event.target.value = "";
     },
-    [handleImageInsertion],
+    [handleImageInsertion]
   );
 
   const handleImageButtonClick = useCallback(() => {
@@ -994,7 +975,7 @@ const TextEditor = ({
       const width = Math.min(100, Math.max(10, Math.round(value)));
       editor.chain().focus().updateAttributes("image", { width }).run();
     },
-    [editor],
+    [editor]
   );
 
   const handleInsertImageFromUrl = useCallback(() => {
@@ -1301,12 +1282,7 @@ const TextEditor = ({
               </button>
               <DropdownMenu.Root modal={false}>
                 <DropdownMenu.Trigger asChild>
-                  <button
-                    type="button"
-                    title="Image"
-                    aria-label="Image"
-                    onMouseDown={handleBubbleButtonMouseDown}
-                  >
+                  <button type="button" title="Image" aria-label="Image" onMouseDown={handleBubbleButtonMouseDown}>
                     <MdImage size={18} />
                   </button>
                 </DropdownMenu.Trigger>
@@ -1738,7 +1714,7 @@ const TextEditor = ({
                 onMouseDown={handleBubbleButtonMouseDown}
                 className={editor.isActive("codeBlock") ? "is-active" : ""}
               >
-              <BiCodeBlock size={18} />
+                <BiCodeBlock size={18} />
               </button>
             </div>
           </BubbleMenu>
@@ -1778,18 +1754,11 @@ const TextEditor = ({
               <MdDragIndicator size={18} aria-hidden />
             </button>
           </DragHandle>
-    </>
-  )}
-  <EditorContent editor={editor} />
-  <input
-    ref={fileInputRef}
-    type="file"
-    accept="image/*"
-    multiple
-    className="text-editor__file-input"
-    onChange={handleFileInputChange}
-  />
-</div>
+        </>
+      )}
+      <EditorContent editor={editor} />
+      <input ref={fileInputRef} type="file" accept="image/*" multiple className="text-editor__file-input" onChange={handleFileInputChange} />
+    </div>
   );
 };
 
