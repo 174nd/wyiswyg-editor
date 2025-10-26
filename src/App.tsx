@@ -3,12 +3,12 @@ import { useState } from "react";
 import TextEditor from "./components/TextEditor";
 
 function App() {
-  const [content, setContent] = useState("<p>Tulis catatan pertamamu di sini.</p>");
+  const [content, setContent] = useState("");
 
   return (
     <main className="app">
       <header className="app__header">
-        <h1 className="app__title">Teks Editor</h1>
+        <h1 className="app__title">174nd - WYSIWYG Editor</h1>
         <p className="app__subtitle">Komponen dasar editor menggunakan Tiptap.</p>
       </header>
 

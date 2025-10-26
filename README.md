@@ -1,73 +1,65 @@
-# React + TypeScript + Vite
+# Tiptap Text Editor Playground
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A polished text-editor playground built with **React 19**, **TypeScript**, and **Vite**.  
+It showcases Tiptap’s rich-text capabilities, complete with bubble menus, slash commands, image handling, table tools, and a live HTML preview.
 
-Currently, two official plugins are available:
+## ✨ Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Rich editing experience** powered by Tiptap Starter Kit (headings, lists, code, blockquotes, etc.).
+- **Context-aware bubble menus**:
+  - Text formatting menu (bold, italic, underline, strike, alignment, color & highlight, sub/superscript, code).
+  - List utilities (switch list types, indent/outdent, clear).
+  - Heading selector.
+  - Image-only controls with a Radix slider to resize images (10–100%) while the main menu hides.
+- **Slash commands** (`/`) for quick insertion of headings, lists, quotes, tables, inline code, images (upload or URL), and more.
+- **Image handling**:
+  - Upload via file dialog, drag & drop, clipboard paste.
+  - Insert from URL.
+  - Automatic centering and resizable width through the dedicated slider bubble menu.
+- **Table helper tools** for inserting tables, adding/removing rows/columns, toggling header rows, and deleting tables.
+- **Task list layout** aligned with checkboxes.
+- **Live HTML preview** that mirrors editor output (including blank lines).
 
-## React Compiler
+## 🚀 Getting Started
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Prerequisites
 
-## Expanding the ESLint configuration
+- [Node.js](https://nodejs.org/) 18+ (or Bun if you prefer)
+- npm, pnpm, or bun for dependency management
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Installation
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm install        # or npm install / bun install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm run dev        # start Vite dev server with HMR
 ```
+
+The editor lives in `src/App.tsx` and the reusable component resides at `src/components/TextEditor.tsx`.
+
+### Production Build
+
+```bash
+pnpm run build      # runs tsc -b && vite build
+pnpm run preview    # serve the production build locally
+```
+
+## 🧭 Tips & Shortcuts
+
+- Type `/` to open the command palette (supports `/image`, `/image dari url`, `/table`, `/task`, etc.).
+- Select text to reveal the formatting bubble; select an image to access the image-resize slider bubble.
+- Drag files or paste images straight into the editor.
+- Tables can be resized using the new column handles and managed via the table bubble dropdown.
+
+## 🛠️ Tech Stack
+
+- React 19 + TypeScript + Vite
+- Tiptap editor extensions
+- Radix UI (dropdown menu & slider components)
+- Tailwind CSS base (via `@tailwindcss/vite`)
+
+Feel free to tweak the editor configuration in `src/components/TextEditor.tsx` to experiment with additional Tiptap extensions or custom behavior. Have fun exploring! 🎉
