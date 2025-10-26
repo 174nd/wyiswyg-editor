@@ -1,4 +1,4 @@
-name: CI
+name: CI & Deploy
 
 on:
   push:
@@ -8,30 +8,24 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Cache Bun cache + node_modules untuk percepat instalasi
-      - name: Cache Bun + node_modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
-          bun-version: "1.1.32"
+          bun-version: '1.1.32'
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -39,38 +33,29 @@ jobs:
       - name: Type check
         run: bunx tsc --noEmit
 
-      # Aktifkan kalau ada eslint:
-      # - name: Lint
-      #   run: bun run lint
+      - name: Lint
+        run: bun run lint
 
-      # Aktifkan kalau ada unit tests:
-      # - name: Test
-      #   run: bun test --coverage
-
-      # Build dengan ENV untuk set Vite base path saat production build
       - name: Build
         run: bun run build
         env:
-          # Untuk Project Pages (https://username.github.io/<repo>/):
-          # ini akan membuat base = '/<repo>/' di config yang sudah kamu siapkan
           VITE_GITHUB_REPO: ${{ github.event.repository.name }}
-          # (Opsional) override manual:
-          # VITE_BASE_PATH: my-vite-app
 
-      # (Opsional) SPA fallback agar hasil build statis tidak 404 saat refresh
       - name: SPA 404 fallback
         run: |
           if [ -f dist/index.html ]; then cp dist/index.html dist/404.html; fi
 
-      # Upload dist sebagai artifact agar bisa diunduh/ditinjau dari tab Actions
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: dist
           path: dist
-          if-no-files-found: warn
-          retention-days: 7
 
-      # (Opsional) Cek ukuran bundle (kalau pakai rollup-plugin-visualizer atau size-limit)
-      # - name: Bundle size check
-      #   run: bun run size
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
