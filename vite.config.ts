@@ -9,13 +9,7 @@ export default defineConfig(({ mode }) => {
 
   const allowedHosts = env.VITE_DOMAIN ? env.VITE_DOMAIN.split(",").map((d) => d.trim()) : ["localhost"];
 
-  const normalizedBaseFromEnv = env.VITE_BASE_PATH
-    ? `/${env.VITE_BASE_PATH.replace(/^\/+/g, "").replace(/\/+/g, "/").replace(/\/+$/, "")}/`
-    : null;
-  const normalizedBaseFromRepo = env.VITE_GITHUB_REPO
-    ? `/${env.VITE_GITHUB_REPO.replace(/^\/+/g, "").replace(/\/+$/, "")}/`
-    : null;
-  const base = mode === "production" ? normalizedBaseFromEnv ?? normalizedBaseFromRepo ?? "/" : "/";
+  const base = mode === "production" ? "./" : "/";
 
   return {
     plugins: [react(), tailwindcss()],
