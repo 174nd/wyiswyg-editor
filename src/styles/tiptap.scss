@@ -17,6 +17,10 @@
   outline: none;
 }
 
+.text-editor__file-input {
+  display: none;
+}
+
 .text-editor__content > *:first-child {
   margin-top: 0;
 }
@@ -62,6 +66,11 @@
   position: relative;
 }
 
+.bubble-menu button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .bubble-menu button[data-text-color-active="true"]::after {
   content: "";
   display: inline-flex;
@@ -102,6 +111,63 @@
   border: 1px solid rgba(148, 163, 184, 0.35);
   box-shadow: 0 24px 48px -24px rgba(15, 23, 42, 0.6);
   backdrop-filter: blur(8px);
+}
+
+.bubble-menu--image {
+  gap: 0.75rem;
+}
+
+.image-resizer-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.image-resizer-menu__label {
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: #e2e8f0;
+}
+
+.image-resizer-menu__slider {
+  display: inline-flex;
+  align-items: center;
+  width: 160px;
+  height: 22px;
+  user-select: none;
+  touch-action: none;
+  position: relative;
+  padding: 0 9px;
+  box-sizing: border-box;
+}
+
+.image-resizer-menu__track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  background: rgba(226, 232, 240, 0.5);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.image-resizer-menu__range {
+  position: absolute;
+  height: 100%;
+  background: #2563eb;
+  border-radius: inherit;
+}
+
+.image-resizer-menu__thumb {
+  display: block;
+  width: 18px;
+  height: 18px;
+  background: #ffffff;
+  border: 2px solid #2563eb;
+  border-radius: 999px;
+  box-shadow: 0 4px 10px -4px rgba(37, 99, 235, 0.45);
+  transform: translateX(-50%);
+  outline: none;
 }
 
 .bubble-menu__dropdown--colors {
@@ -409,6 +475,15 @@
     border-radius: 0.75rem;
   }
 
+  .editor-image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.75rem;
+    margin: 1rem auto;
+    text-align: center;
+  }
+
   a {
     color: #2563eb;
     text-decoration: none;
@@ -417,6 +492,69 @@
 
   a:hover {
     text-decoration: underline;
+  }
+
+  .tableWrapper {
+    margin: 1.5rem 0;
+    overflow-x: auto;
+    border-radius: 0.75rem;
+    box-shadow: 0 12px 30px -24px rgba(15, 23, 42, 0.35);
+  }
+
+  table,
+  .editor-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+    color: #1e293b;
+    background: #ffffff;
+  }
+
+  th.editor-table__header {
+    background: #e2e8f0;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  td.editor-table__cell,
+  th.editor-table__header {
+    border: 1px solid #cbd5f5;
+    padding: 0.65rem 0.85rem;
+    vertical-align: top;
+    position: relative;
+  }
+
+  td.editor-table__cell p,
+  th.editor-table__header p {
+    margin: 0;
+  }
+
+  tr:nth-child(even) td.editor-table__cell {
+    background: #f8fafc;
+  }
+
+  .selectedCell {
+    position: relative;
+    box-shadow: inset 0 0 0 2px #2563eb;
+    background: rgba(37, 99, 235, 0.12);
+  }
+
+  .column-resize-handle {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background-color: rgba(37, 99, 235, 0.75);
+    opacity: 0;
+    transition: opacity 120ms ease;
+    cursor: col-resize;
+    border-radius: 2px;
+  }
+
+  td:hover .column-resize-handle,
+  th:hover .column-resize-handle {
+    opacity: 1;
   }
 
   mark[data-type="highlight"] {
@@ -431,35 +569,42 @@
     padding-left: 0;
 
     li {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: flex-start;
+      column-gap: 0.55rem;
       margin: 0.5rem 0;
 
-      .task-item {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.35rem;
-
-        label {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.3rem;
-          cursor: pointer;
-          margin-top: 0.15rem;
-        }
-
-        input[type="checkbox"] {
-          margin: 0;
-          width: 1rem;
-          height: 1rem;
-          border-radius: 0.2rem;
-          border: 1px solid #cbd5f5;
-          cursor: pointer;
-        }
-
-        > div {
-          flex: 1;
-          margin-top: 0.1rem;
-        }
+      > label {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        margin-top: 0.5rem;
+        cursor: pointer;
       }
+
+      > label input[type="checkbox"] {
+        margin: 0;
+        width: 1rem;
+        height: 1rem;
+        border-radius: 0.2rem;
+        border: 1px solid #cbd5f5;
+        cursor: pointer;
+      }
+
+      > div {
+        margin: 0;
+        padding: 0;
+      }
+
+      > div p {
+        margin: 0 0 0.6rem;
+      }
+    }
+
+    li:last-child > div p:last-child {
+      margin-bottom: 0;
     }
   }
 }

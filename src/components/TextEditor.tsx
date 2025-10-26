@@ -2,16 +2,18 @@ import {
   forwardRef,
   type CSSProperties,
   type MouseEvent,
+  type ChangeEvent,
   useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
   useState,
+  useMemo,
 } from "react";
 import { BubbleMenu, EditorContent, ReactRenderer, useEditor } from "@tiptap/react";
 import { Extension } from "@tiptap/core";
 import type { Editor as TiptapEditor, Range } from "@tiptap/core";
-import Suggestion, { type SuggestionProps } from "@tiptap/suggestion";
+import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from "@tiptap/suggestion";
 import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit from "@tiptap/starter-kit";
 import DragHandle from "@tiptap/extension-drag-handle-react";
@@ -26,12 +28,18 @@ import TaskList from "@tiptap/extension-task-list";
 import TextAlign from "@tiptap/extension-text-align";
 import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
+import Table from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import Image from "@tiptap/extension-image";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { NodeSelection } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, TextSelection } from "@tiptap/pm/state";
 import type { IconType } from "react-icons";
 import {
   MdChecklist,
   MdCode,
+  MdCloudUpload,
   MdDragIndicator,
   MdFormatBold,
   MdFormatClear,
@@ -40,6 +48,8 @@ import {
   MdFormatAlignLeft,
   MdFormatAlignRight,
   MdFormatItalic,
+  MdFormatIndentDecrease,
+  MdFormatIndentIncrease,
   MdFormatListBulleted,
   MdFormatListNumbered,
   MdFormatQuote,
@@ -47,18 +57,27 @@ import {
   MdFormatUnderlined,
   MdHorizontalRule,
   MdLink,
+  MdImage,
   MdLooks3,
   MdLooksOne,
   MdLooksTwo,
+  MdOutlineImage,
   MdOutlineSegment,
   MdPalette,
   MdSubscript,
   MdSuperscript,
   MdTitle,
+  MdTableChart,
+  MdBorderTop,
+  MdBorderBottom,
+  MdBorderLeft,
+  MdBorderRight,
+  MdDeleteForever,
 } from "react-icons/md";
 import { BiCodeBlock } from "react-icons/bi";
 import "../styles/tiptap.scss";
-import tippy from "tippy.js";
+import tippy, { type Instance as TippyInstance } from "tippy.js";
+import * as Slider from "@radix-ui/react-slider";
 
 type SlashCommandAction = (props: { editor: TiptapEditor; range: Range }) => void;
 
@@ -129,11 +148,42 @@ const promptLink = (editor: TiptapEditor, range?: Range) => {
     return;
   }
 
+  editor.chain().focus().extendMarkRange("link").setLink({ href, target: "_blank", rel: "noopener noreferrer" }).run();
+};
+
+const normalizeImageUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^(?:https?|data|blob|ftp):/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `https://${trimmed}`;
+};
+
+const promptImageUrlAndInsert = (editor: TiptapEditor) => {
+  const urlInput = window.prompt("Masukkan URL gambar");
+  if (urlInput === null) {
+    return;
+  }
+
+  const normalizedUrl = normalizeImageUrl(urlInput);
+  if (!normalizedUrl) {
+    window.alert("URL gambar tidak valid.");
+    return;
+  }
+
+  const altInput = window.prompt("Masukkan teks alt (opsional)", "");
+  const alt = altInput ? altInput.trim() || undefined : undefined;
+
   editor
     .chain()
     .focus()
-    .extendMarkRange("link")
-    .setLink({ href, target: "_blank", rel: "noopener noreferrer" })
+    .setImage({ src: normalizedUrl, alt })
+    .updateAttributes("image", { width: 100 })
     .run();
 };
 
@@ -194,7 +244,11 @@ const SlashCommandList = forwardRef<SlashCommandListRef, SlashCommandListProps>(
   }));
 
   if (!items.length) {
-    return <div className="slash-command"><div className="slash-command__empty">Tidak ada hasil</div></div>;
+    return (
+      <div className="slash-command">
+        <div className="slash-command__empty">Tidak ada hasil</div>
+      </div>
+    );
   }
 
   return (
@@ -289,6 +343,15 @@ const createSlashCommandItems = (): SlashCommandItem[] => [
     },
   },
   {
+    title: "Table",
+    description: "Sisipkan tabel 3x4 dengan header",
+    icon: MdTableChart,
+    action: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      insertDefaultTable(editor);
+    },
+  },
+  {
     title: "Align left",
     description: "Ratakan teks ke kiri",
     icon: MdFormatAlignLeft,
@@ -334,6 +397,30 @@ const createSlashCommandItems = (): SlashCommandItem[] => [
     icon: MdHorizontalRule,
     action: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).setHorizontalRule().run();
+    },
+  },
+  {
+    title: "Image",
+    description: "Unggah atau tempel gambar",
+    icon: MdImage,
+    action: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      editor.commands.command(({ tr }) => {
+        const event = new CustomEvent("tiptap-trigger-image-upload", {
+          detail: { position: tr.selection.from },
+        });
+        document.dispatchEvent(event);
+        return true;
+      });
+    },
+  },
+  {
+    title: "Image dari URL",
+    description: "Sisipkan gambar menggunakan URL",
+    icon: MdOutlineImage,
+    action: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      promptImageUrlAndInsert(editor);
     },
   },
   {
@@ -416,8 +503,8 @@ const SlashCommandExtension = Extension.create({
     return {
       suggestion: {
         char: "/",
-        command: ({ editor, range, props }) => {
-          const item = props as SlashCommandItem | undefined;
+        command: ({ editor, range, props }: { editor: TiptapEditor; range: Range; props: SlashCommandItem }) => {
+          const item = props;
           if (!item) {
             return;
           }
@@ -442,27 +529,24 @@ const createSlashCommandExtension = () =>
       char: "/",
       allowSpaces: false,
       startOfLine: false,
-      items: ({ query }) => {
-        const normalized = query?.toLowerCase().trim() ?? "";
+      items: ({ query, editor: _editor }: { query: string; editor: TiptapEditor }) => {
+        const normalized = query.toLowerCase().trim();
         const items = createSlashCommandItems();
-        if (!normalized) {
+        if (!normalized.length) {
           return items.slice(0, 10);
         }
 
         return items
-          .filter(
-            (item) =>
-              item.title.toLowerCase().includes(normalized) || item.description.toLowerCase().includes(normalized)
-          )
+          .filter((item) => item.title.toLowerCase().includes(normalized) || item.description.toLowerCase().includes(normalized))
           .slice(0, 10);
       },
       render: () => {
-        let component: ReactRenderer<SlashCommandListRef>;
-        let popup: ReturnType<typeof tippy> | null = null;
+        let component: ReactRenderer<SlashCommandListRef, SlashCommandListProps> | null = null;
+        let popup: TippyInstance | null = null;
 
         return {
-          onStart: (props) => {
-            component = new ReactRenderer(SlashCommandList, {
+          onStart: (props: SuggestionProps) => {
+            component = new ReactRenderer<SlashCommandListRef, SlashCommandListProps>(SlashCommandList, {
               props,
               editor: props.editor,
             });
@@ -471,8 +555,8 @@ const createSlashCommandExtension = () =>
               return;
             }
 
-            popup = tippy(document.body, {
-              getReferenceClientRect: props.clientRect,
+            const instances = tippy(document.body, {
+              getReferenceClientRect: () => props.clientRect?.() ?? new DOMRect(),
               appendTo: () => document.body,
               content: component.element,
               showOnCreate: true,
@@ -481,30 +565,32 @@ const createSlashCommandExtension = () =>
               placement: "bottom-start",
               offset: [0, 8],
             });
+            popup = (Array.isArray(instances) ? instances[0] : instances) ?? null;
           },
-          onUpdate(props) {
-            component.updateProps(props);
+          onUpdate(props: SuggestionProps) {
+            component?.updateProps(props);
 
             if (!props.clientRect) {
               return;
             }
 
             popup?.setProps({
-              getReferenceClientRect: props.clientRect,
+              getReferenceClientRect: () => props.clientRect?.() ?? new DOMRect(),
             });
           },
-          onKeyDown(props) {
+          onKeyDown(props: SuggestionKeyDownProps) {
             if (props.event.key === "Escape") {
               popup?.hide();
               return true;
             }
 
-            return component.ref?.onKeyDown(props) ?? false;
+            return component?.ref?.onKeyDown({ event: props.event }) ?? false;
           },
           onExit() {
             popup?.destroy();
             popup = null;
-            component.destroy();
+            component?.destroy();
+            component = null;
           },
         };
       },
@@ -512,6 +598,42 @@ const createSlashCommandExtension = () =>
   });
 
 const slashCommandExtension = createSlashCommandExtension();
+
+const performIndent = (editor: TiptapEditor | null) => {
+  if (!editor) {
+    return false;
+  }
+
+  if (editor.can().sinkListItem("taskItem")) {
+    editor.chain().focus().sinkListItem("taskItem").run();
+    return true;
+  }
+
+  if (editor.can().sinkListItem("listItem")) {
+    editor.chain().focus().sinkListItem("listItem").run();
+    return true;
+  }
+
+  return false;
+};
+
+const performOutdent = (editor: TiptapEditor | null) => {
+  if (!editor) {
+    return false;
+  }
+
+  if (editor.can().liftListItem("taskItem")) {
+    editor.chain().focus().liftListItem("taskItem").run();
+    return true;
+  }
+
+  if (editor.can().liftListItem("listItem")) {
+    editor.chain().focus().liftListItem("listItem").run();
+    return true;
+  }
+
+  return false;
+};
 
 const TEXT_COLOR_OPTIONS = [
   { name: "Slate", value: "#1f2937" },
@@ -549,13 +671,144 @@ const HIGHLIGHT_OPTIONS = [
   { name: "Blush", value: "#fecdd3" },
 ] as const;
 
+const DEFAULT_TABLE_CONFIG = {
+  rows: 3,
+  cols: 4,
+  withHeaderRow: true,
+};
+
+const insertDefaultTable = (editor: TiptapEditor | null) => {
+  if (!editor) return false;
+  return editor.chain().focus().insertTable(DEFAULT_TABLE_CONFIG).run();
+};
+
+const readFileAsDataURL = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
+const insertImagesFromFiles = async (editor: TiptapEditor, files: Iterable<File>, position?: number) => {
+  const imageFiles = Array.from(files).filter((file) => file.type.startsWith("image/"));
+  if (!imageFiles.length) {
+    return;
+  }
+
+  if (position !== undefined) {
+    editor.chain().focus(position).run();
+  } else {
+    editor.chain().focus().run();
+  }
+
+  for (const file of imageFiles) {
+    try {
+      const src = await readFileAsDataURL(file);
+      if (!src) continue;
+      const alt = file.name?.replace(/\.[^/.]+$/, "") ?? "Image";
+      editor.chain().focus().setImage({ src, alt }).updateAttributes("image", { width: 100 }).run();
+    } catch (error) {
+      console.error("Failed to read image file", error);
+    }
+  }
+};
+
+const tableCommands = {
+  addRowAbove: (editor: TiptapEditor | null) => editor?.chain().focus().addRowBefore().run() ?? false,
+  addRowBelow: (editor: TiptapEditor | null) => editor?.chain().focus().addRowAfter().run() ?? false,
+  addColumnLeft: (editor: TiptapEditor | null) => editor?.chain().focus().addColumnBefore().run() ?? false,
+  addColumnRight: (editor: TiptapEditor | null) => editor?.chain().focus().addColumnAfter().run() ?? false,
+  deleteRow: (editor: TiptapEditor | null) => editor?.chain().focus().deleteRow().run() ?? false,
+  deleteColumn: (editor: TiptapEditor | null) => editor?.chain().focus().deleteColumn().run() ?? false,
+  deleteTable: (editor: TiptapEditor | null) => editor?.chain().focus().deleteTable().run() ?? false,
+  toggleHeader: (editor: TiptapEditor | null) => editor?.chain().focus().toggleHeaderRow().run() ?? false,
+};
+
+const ResizableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: 100,
+        renderHTML: (attributes: { width?: number }) => {
+          const width = typeof attributes.width === "number" && Number.isFinite(attributes.width)
+            ? attributes.width
+            : 100;
+          const style = [`width: ${width}%;`, "height: auto;"];
+          return {
+            "data-width": width,
+            style: style.join(" "),
+          };
+        },
+        parseHTML: (element: HTMLElement) => {
+          const widthAttr =
+            element.getAttribute("data-width") ?? element.style.width ?? element.getAttribute("width");
+          if (!widthAttr) return 100;
+          const parsed = parseFloat(String(widthAttr).replace(/[^\d.]/g, ""));
+          return Number.isFinite(parsed) ? parsed : 100;
+        },
+      },
+    } satisfies Record<string, unknown>;
+  },
+});
+
+const ImageFileHandlerExtension = Extension.create({
+  name: "imageFileHandler",
+  addProseMirrorPlugins() {
+    const editor = this.editor;
+    return [
+      new Plugin({
+        props: {
+          handlePaste(view, event) {
+            const files = event.clipboardData?.files;
+            if (!files?.length) return false;
+            const imageFiles = Array.from(files).filter((file) => file.type.startsWith("image/"));
+            if (!imageFiles.length) return false;
+            event.preventDefault();
+            void insertImagesFromFiles(editor, imageFiles, view.state.selection.from);
+            return true;
+          },
+          handleDrop(view, event) {
+            const files = event.dataTransfer?.files;
+            if (!files?.length) return false;
+            const imageFiles = Array.from(files).filter((file) => file.type.startsWith("image/"));
+            if (!imageFiles.length) return false;
+            event.preventDefault();
+            const coordinates = view.posAtCoords({ left: event.clientX, top: event.clientY });
+            const position = coordinates?.pos ?? view.state.selection.from;
+            void insertImagesFromFiles(editor, imageFiles, position);
+            return true;
+          },
+        },
+      }),
+    ];
+  },
+});
+
 type TextEditorProps = {
   value?: string;
   onChange?: (content: string) => void;
   placeholder?: string;
+  className?: string;
+  contentClassName?: string;
 };
 
-const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }: TextEditorProps) => {
+const TextEditor = ({
+  value = "",
+  onChange,
+  placeholder = "Mulai mengetik...",
+  className,
+  contentClassName,
+}: TextEditorProps) => {
+  const wrapperClassName = ["text-editor", className].filter(Boolean).join(" ");
+  const editorContentClassName = [
+    "text-editor__content tiptap focus:outline-none min-h-[180px]",
+    contentClassName,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -575,6 +828,24 @@ const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }:
           class: "editor-heading",
         },
       }),
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: { class: "editor-table" },
+      }),
+      TableRow,
+      TableHeader.configure({
+        HTMLAttributes: { class: "editor-table__header" },
+      }),
+      TableCell.configure({
+        HTMLAttributes: { class: "editor-table__cell" },
+      }),
+      ResizableImage.configure({
+        allowBase64: true,
+        HTMLAttributes: {
+          class: "editor-image",
+        },
+      }),
+      ImageFileHandlerExtension,
       Link.configure({
         openOnClick: false,
         linkOnPaste: false,
@@ -597,8 +868,28 @@ const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }:
     },
     editorProps: {
       attributes: {
-        class: "text-editor__content tiptap focus:outline-none min-h-[180px]",
-        // 'text-editor__content tiptap focus:outline-none min-h-[180px] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500',
+        class: editorContentClassName,
+      },
+      handleDOMEvents: {
+        keydown: (_view, event) => {
+          if (event.key === "Tab") {
+            if (event.shiftKey) {
+              const handled = performOutdent(editor);
+              if (handled) {
+                event.preventDefault();
+                return true;
+              }
+            } else {
+              const handled = performIndent(editor);
+              if (handled) {
+                event.preventDefault();
+                return true;
+              }
+            }
+          }
+
+          return false;
+        },
       },
     },
   });
@@ -644,6 +935,107 @@ const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }:
     justify: MdFormatAlignJustify,
   };
   const AlignmentIcon = alignmentIcons[currentAlignment];
+  const canIndent = editor ? editor.can().sinkListItem("taskItem") || editor.can().sinkListItem("listItem") : false;
+  const canOutdent = editor ? editor.can().liftListItem("taskItem") || editor.can().liftListItem("listItem") : false;
+  const tableActive = editor?.isActive("table") ?? false;
+  const canAddRowAbove = editor ? editor.can().addRowBefore() : false;
+  const canAddRowBelow = editor ? editor.can().addRowAfter() : false;
+  const canAddColumnLeft = editor ? editor.can().addColumnBefore() : false;
+  const canAddColumnRight = editor ? editor.can().addColumnAfter() : false;
+  const canDeleteRow = editor ? editor.can().deleteRow() : false;
+  const canDeleteColumn = editor ? editor.can().deleteColumn() : false;
+  const canDeleteTable = editor ? editor.can().deleteTable() : false;
+  const canToggleHeader = editor ? editor.can().toggleHeaderRow() : false;
+  const headerRowActive = editor?.isActive("tableHeader") ?? false;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const rawImageWidth = editor?.getAttributes("image")?.width;
+  const imageWidth = useMemo(() => {
+    if (typeof rawImageWidth === "number") {
+      return rawImageWidth;
+    }
+    if (typeof rawImageWidth === "string" && rawImageWidth) {
+      const parsed = parseFloat(rawImageWidth.replace(/[^\d.]/g, ""));
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return 100;
+  }, [rawImageWidth]);
+
+  const clampedImageWidth = Math.min(100, Math.max(10, Math.round(imageWidth)));
+
+  const handleImageInsertion = useCallback(
+    async (files: Iterable<File>, position?: number) => {
+      if (!editor) return;
+      await insertImagesFromFiles(editor, files, position);
+    },
+    [editor],
+  );
+
+  const handleFileInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files?.length) {
+        return;
+      }
+      void handleImageInsertion(files);
+      event.target.value = "";
+    },
+    [handleImageInsertion],
+  );
+
+  const handleImageButtonClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleImageWidthChange = useCallback(
+    (value: number) => {
+      if (!editor) return;
+      const width = Math.min(100, Math.max(10, Math.round(value)));
+      editor.chain().focus().updateAttributes("image", { width }).run();
+    },
+    [editor],
+  );
+
+  const handleInsertImageFromUrl = useCallback(() => {
+    if (!editor) return;
+    promptImageUrlAndInsert(editor);
+  }, [editor]);
+
+  useEffect(() => {
+    if (!editor) return;
+
+    const applyPosition = (position?: number) => {
+      if (position === undefined) {
+        return;
+      }
+      const doc = editor.state.doc;
+      const resolved = doc.resolve(Math.min(Math.max(position, 0), doc.content.size));
+      const tr = editor.state.tr.setSelection(TextSelection.near(resolved));
+      editor.view.dispatch(tr);
+    };
+
+    const uploadListener = (event: Event) => {
+      const customEvent = event as CustomEvent<{ position?: number }>;
+      applyPosition(customEvent.detail?.position);
+      editor.view.focus();
+      handleImageButtonClick();
+    };
+
+    const urlListener = (event: Event) => {
+      const customEvent = event as CustomEvent<{ position?: number }>;
+      applyPosition(customEvent.detail?.position);
+      editor.view.focus();
+      handleInsertImageFromUrl();
+    };
+
+    document.addEventListener("tiptap-trigger-image-upload", uploadListener);
+    document.addEventListener("tiptap-insert-image-url", urlListener);
+    return () => {
+      document.removeEventListener("tiptap-trigger-image-upload", uploadListener);
+      document.removeEventListener("tiptap-insert-image-url", urlListener);
+    };
+  }, [editor, handleImageButtonClick, handleInsertImageFromUrl]);
 
   const handleLinkButtonClick = useCallback(() => {
     if (!editor) return;
@@ -665,7 +1057,7 @@ const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }:
   }, [editor]);
 
   return (
-    <div className="text-editor">
+    <div className={wrapperClassName}>
       {editor && (
         <>
           <BubbleMenu
@@ -678,6 +1070,13 @@ const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }:
               interactive: true,
             }}
             className="bubble-menu"
+            shouldShow={({ editor }) => {
+              if (editor.isActive("image")) {
+                return false;
+              }
+              const { selection } = editor.state;
+              return selection instanceof TextSelection && !selection.empty;
+            }}
           >
             <div ref={setBubbleMenuContent} className="bubble-menu__content">
               <button
@@ -796,6 +1195,26 @@ const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }:
                   </DropdownMenu.Content>
                 </DropdownMenu.Portal>
               </DropdownMenu.Root>
+              <button
+                type="button"
+                title="Indent"
+                aria-label="Indent"
+                onClick={() => performIndent(editor)}
+                onMouseDown={handleBubbleButtonMouseDown}
+                disabled={!canIndent}
+              >
+                <MdFormatIndentIncrease size={18} />
+              </button>
+              <button
+                type="button"
+                title="Outdent"
+                aria-label="Outdent"
+                onClick={() => performOutdent(editor)}
+                onMouseDown={handleBubbleButtonMouseDown}
+                disabled={!canOutdent}
+              >
+                <MdFormatIndentDecrease size={18} />
+              </button>
               <DropdownMenu.Root modal={false}>
                 <DropdownMenu.Trigger asChild>
                   <button
@@ -880,6 +1299,53 @@ const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }:
               >
                 <MdLink size={18} />
               </button>
+              <DropdownMenu.Root modal={false}>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    title="Image"
+                    aria-label="Image"
+                    onMouseDown={handleBubbleButtonMouseDown}
+                  >
+                    <MdImage size={18} />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal container={bubbleMenuContent ?? undefined}>
+                  <DropdownMenu.Content
+                    className="bubble-menu__dropdown"
+                    side="bottom"
+                    align="start"
+                    sideOffset={6}
+                    collisionPadding={8}
+                    avoidCollisions
+                  >
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        handleImageButtonClick();
+                        window.setTimeout(() => editor?.commands.blur(), 0);
+                      }}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdCloudUpload size={16} />
+                      </span>
+                      Unggah gambar
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        handleInsertImageFromUrl();
+                        window.setTimeout(() => editor?.commands.blur(), 0);
+                      }}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdOutlineImage size={16} />
+                      </span>
+                      Gambar dari URL
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
               <button
                 type="button"
                 title="Quote"
@@ -956,6 +1422,34 @@ const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }:
                       </span>
                       Todo list
                     </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        if (performIndent(editor)) {
+                          window.setTimeout(() => editor.commands.blur(), 0);
+                        }
+                      }}
+                      disabled={!canIndent}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdFormatIndentIncrease size={16} />
+                      </span>
+                      Indent
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        if (performOutdent(editor)) {
+                          window.setTimeout(() => editor.commands.blur(), 0);
+                        }
+                      }}
+                      disabled={!canOutdent}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdFormatIndentDecrease size={16} />
+                      </span>
+                      Outdent
+                    </DropdownMenu.Item>
                     <DropdownMenu.Separator className="bubble-menu__dropdown-separator" />
                     <DropdownMenu.Item
                       className="bubble-menu__dropdown-item"
@@ -971,6 +1465,149 @@ const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }:
                         <MdFormatClear size={16} />
                       </span>
                       Clear list
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+              <DropdownMenu.Root modal={false}>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    title="Table Tools"
+                    aria-label="Table Tools"
+                    onMouseDown={handleBubbleButtonMouseDown}
+                    className={tableActive ? "is-active" : ""}
+                  >
+                    <MdTableChart size={18} />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal container={bubbleMenuContent ?? undefined}>
+                  <DropdownMenu.Content
+                    className="bubble-menu__dropdown"
+                    side="bottom"
+                    align="start"
+                    sideOffset={6}
+                    collisionPadding={8}
+                    avoidCollisions
+                  >
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        insertDefaultTable(editor);
+                        window.setTimeout(() => editor?.commands.blur(), 0);
+                      }}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdTableChart size={16} />
+                      </span>
+                      Insert table
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Separator className="bubble-menu__dropdown-separator" />
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        tableCommands.addRowAbove(editor);
+                        window.setTimeout(() => editor?.commands.blur(), 0);
+                      }}
+                      disabled={!canAddRowAbove}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdBorderTop size={16} />
+                      </span>
+                      Add row above
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        tableCommands.addRowBelow(editor);
+                        window.setTimeout(() => editor?.commands.blur(), 0);
+                      }}
+                      disabled={!canAddRowBelow}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdBorderBottom size={16} />
+                      </span>
+                      Add row below
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        tableCommands.addColumnLeft(editor);
+                        window.setTimeout(() => editor?.commands.blur(), 0);
+                      }}
+                      disabled={!canAddColumnLeft}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdBorderLeft size={16} />
+                      </span>
+                      Add column left
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        tableCommands.addColumnRight(editor);
+                        window.setTimeout(() => editor?.commands.blur(), 0);
+                      }}
+                      disabled={!canAddColumnRight}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdBorderRight size={16} />
+                      </span>
+                      Add column right
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Separator className="bubble-menu__dropdown-separator" />
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        tableCommands.toggleHeader(editor);
+                        window.setTimeout(() => editor?.commands.blur(), 0);
+                      }}
+                      disabled={!canToggleHeader}
+                      data-active={headerRowActive}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdOutlineSegment size={16} />
+                      </span>
+                      Toggle header row
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        tableCommands.deleteRow(editor);
+                        window.setTimeout(() => editor?.commands.blur(), 0);
+                      }}
+                      disabled={!canDeleteRow}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdDeleteForever size={16} />
+                      </span>
+                      Delete row
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        tableCommands.deleteColumn(editor);
+                        window.setTimeout(() => editor?.commands.blur(), 0);
+                      }}
+                      disabled={!canDeleteColumn}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdDeleteForever size={16} />
+                      </span>
+                      Delete column
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className="bubble-menu__dropdown-item"
+                      onSelect={() => {
+                        tableCommands.deleteTable(editor);
+                        window.setTimeout(() => editor?.commands.blur(), 0);
+                      }}
+                      disabled={!canDeleteTable}
+                    >
+                      <span className="bubble-menu__dropdown-icon" aria-hidden>
+                        <MdDeleteForever size={16} />
+                      </span>
+                      Delete table
                     </DropdownMenu.Item>
                   </DropdownMenu.Content>
                 </DropdownMenu.Portal>
@@ -1101,8 +1738,39 @@ const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }:
                 onMouseDown={handleBubbleButtonMouseDown}
                 className={editor.isActive("codeBlock") ? "is-active" : ""}
               >
-                <BiCodeBlock size={18} />
+              <BiCodeBlock size={18} />
               </button>
+            </div>
+          </BubbleMenu>
+          <BubbleMenu
+            editor={editor}
+            tippyOptions={{
+              placement: "bottom",
+              animation: "shift-away",
+              duration: 200,
+              appendTo: () => editor?.view.dom.parentElement ?? document.body,
+              interactive: true,
+              offset: [0, 16],
+            }}
+            className="bubble-menu bubble-menu--image"
+            shouldShow={({ editor }) => editor.isActive("image")}
+            pluginKey="imageControls"
+          >
+            <div className="image-resizer-menu" onMouseDown={(event) => event.preventDefault()}>
+              <span className="image-resizer-menu__label">Lebar {clampedImageWidth}%</span>
+              <Slider.Root
+                className="image-resizer-menu__slider"
+                min={10}
+                max={100}
+                step={1}
+                value={[clampedImageWidth]}
+                onValueChange={([value]) => handleImageWidthChange(value ?? clampedImageWidth)}
+              >
+                <Slider.Track className="image-resizer-menu__track">
+                  <Slider.Range className="image-resizer-menu__range" />
+                </Slider.Track>
+                <Slider.Thumb className="image-resizer-menu__thumb" aria-label="Image width" />
+              </Slider.Root>
             </div>
           </BubbleMenu>
           <DragHandle editor={editor} className="drag-handle" onElementDragEnd={handleDragEnd}>
@@ -1110,10 +1778,18 @@ const TextEditor = ({ value = "", onChange, placeholder = "Mulai mengetik..." }:
               <MdDragIndicator size={18} aria-hidden />
             </button>
           </DragHandle>
-        </>
-      )}
-      <EditorContent editor={editor} />
-    </div>
+    </>
+  )}
+  <EditorContent editor={editor} />
+  <input
+    ref={fileInputRef}
+    type="file"
+    accept="image/*"
+    multiple
+    className="text-editor__file-input"
+    onChange={handleFileInputChange}
+  />
+</div>
   );
 };
 
