@@ -10,6 +10,8 @@ export default defineConfig(({ mode }) => {
   const allowedHosts = env.VITE_DOMAIN ? env.VITE_DOMAIN.split(",").map((d) => d.trim()) : ["localhost"];
   return {
     plugins: [react(), tailwindcss()],
+    base: "/wyiswyg-editor/",
+
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
